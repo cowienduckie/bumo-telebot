@@ -1,24 +1,44 @@
+import datetime
 import logging
 import os
+from typing import Tuple
 
+import pytz
 import redis
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
-from telegram.ext import filters, CallbackContext, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, ApplicationBuilder
+from telegram import (
+    Chat,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    Update
+)
 from telegram.constants import ParseMode
-from constants import GET_FB_THOITIETHN_BUTTON, WEATHER_MENU
+from telegram.ext import (
+    filters,
+    CallbackContext,
+    CommandHandler,
+    CallbackQueryHandler,
+    MessageHandler,
+    ContextTypes,
+    ApplicationBuilder
+)
+
+from constants import GET_FB_THOITIETHN_BUTTON, WEATHER_MENU, FB_WEATHER_CACHE_KEY, REDIS_URL_KEY, BOT_TOKEN_KEY, \
+    WEATHER_SUCCESS_MESSAGE, WEATHER_FAILURE_MESSAGE
 from facebook_crawler import FacebookCrawler
 
 # Enable logging
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # Get the Redis URL from the environment variable
-r = redis.from_url(os.environ.get("REDIS_URL"))
+REDIS_URL = os.environ.get(REDIS_URL_KEY)
+r = redis.from_url(REDIS_URL)
 
 # Export the API token as an environment variable
-BOT_TOKEN = os.environ.get('BOT_TOKEN')
+BOT_TOKEN = os.environ.get(BOT_TOKEN_KEY)
 
 # Build keyboards
 WEATHER_MENU_MARKUP = InlineKeyboardMarkup([[
@@ -26,26 +46,23 @@ WEATHER_MENU_MARKUP = InlineKeyboardMarkup([[
 ]])
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start_private_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    This function would be added to the dispatcher as a handler for the /start command
+    Greets the user and records that they started a chat with the bot if it's a private chat.
+    Since no `my_chat_member` update is issued when a user starts a private chat with the bot
+    for the first time, we have to track it explicitly here.
     """
-    # Send a welcome message
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text="Me is Bumo chatbot. Glad to meet you!"
+    user_name = update.effective_user.full_name
+    chat = update.effective_chat
+
+    if chat.type != Chat.PRIVATE or chat.id in context.bot_data.get("user_ids", set()):
+        return
+
+    context.bot_data.setdefault("user_ids", set()).add(chat.id)
+
+    await update.effective_message.reply_text(
+        f"Welcome {user_name}. Me is Bumo chatbot. Glad to meet you!"
     )
-
-
-async def echo(update: Update, context: CallbackContext) -> None:
-    """
-    This function would be added to the dispatcher as a handler for messages coming from the Bot API
-    """
-    # Print to console
-    print(f'{update.message.from_user.first_name} wrote {update.message.text}')
-
-    # Reply to the user
-    await update.message.copy(update.message.chat_id)
 
 
 async def weather(update: Update, context: CallbackContext) -> None:
@@ -64,32 +81,37 @@ async def weather(update: Update, context: CallbackContext) -> None:
     )
 
 
-async def button_tap(update: Update, context: CallbackContext) -> None:
+async def get_weather_data(is_daily_send=False) -> Tuple[str, InlineKeyboardMarkup]:
+    if is_daily_send:
+        r.delete(FB_WEATHER_CACHE_KEY)
+
+    if (post_url := r.get(FB_WEATHER_CACHE_KEY)) is None:
+        crawler = FacebookCrawler()
+        post_url = crawler.get_latest_post("thoitietHN")
+
+        r.set(FB_WEATHER_CACHE_KEY, post_url)
+        r.expire(FB_WEATHER_CACHE_KEY, 3600)  # Set expiration time to 1 hour
+    else:
+        post_url = post_url.decode('utf-8')
+
+    if post_url is None:
+        text = WEATHER_FAILURE_MESSAGE
+        markup = None
+    else:
+        text = WEATHER_SUCCESS_MESSAGE.format(post_url)
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("Go to Post", url=post_url)]])
+
+    return text, markup
+
+
+async def send_weather(update: Update, context: CallbackContext) -> None:
     """
     This handler processes the inline buttons on the menu
     """
-    data = update.callback_query.data
-    text = ''
-    markup = None
+    if update.callback_query.data != GET_FB_THOITIETHN_BUTTON:
+        return
 
-    if data == GET_FB_THOITIETHN_BUTTON:
-        if (post_url := r.get("thoitietHN")) is None:
-            crawler = FacebookCrawler()
-            post_url = crawler.get_latest_post("thoitietHN")
-
-            r.set("thoitietHN", post_url)
-            r.expire("thoitietHN", 3600)  # Set expiration time to 1 hour
-        else:
-            post_url = post_url.decode('utf-8')
-
-        if post_url is None:
-            text = "<b>🙇 Sorry, I couldn't find the latest post from Thời Tiết Hà Nội</b>"
-            markup = None
-        else:
-            text = f"<a href=\"{post_url}\"><b>🔗 Latest post from Thời Tiết Hà Nội</b></a>"
-            markup = InlineKeyboardMarkup([[
-                InlineKeyboardButton("Go to Post", url=post_url)
-            ]])
+    text, markup = await get_weather_data()
 
     # Close the query to end the client-side loading animation
     await update.callback_query.answer()
@@ -102,20 +124,46 @@ async def button_tap(update: Update, context: CallbackContext) -> None:
     )
 
 
+async def send_daily_weather(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Sends the daily weather forecast to the users who have started a chat with the bot
+    """
+    # Get the latest post from the Facebook page
+    text, markup = await get_weather_data()
+
+    # Send the weather forecast to all users who have started a chat with the bot
+    for user_id in context.bot_data.setdefault("user_ids", set()):
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=markup
+        )
+
+
 def main() -> None:
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
+    # Job queue
+    job_queue = application.job_queue
+
+    job_queue.run_daily(
+        callback=send_daily_weather,
+        time=datetime.time(hour=7, minute=30, tzinfo=pytz.timezone("Asia/Ho_Chi_Minh")),
+        days=(0, 1, 2, 3, 4, 5, 6),
+        name="daily_weather"
+    )
+
     # Command handlers
-    application.add_handler(CommandHandler('start', start))
     application.add_handler(CommandHandler("weather", weather))
 
     # Callback query handlers
-    application.add_handler(CallbackQueryHandler(button_tap))
+    application.add_handler(CallbackQueryHandler(send_weather))
 
     # Message handlers
-    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), echo))
+    application.add_handler(MessageHandler(filters.ALL, start_private_chat))
 
-    application.run_polling()
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == '__main__':
