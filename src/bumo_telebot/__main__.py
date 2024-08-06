@@ -2,11 +2,17 @@ import logging
 import os
 
 import redis
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ParseMode
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler
-
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Update
+from telegram.ext import filters, CallbackContext, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, ApplicationBuilder
+from telegram.constants import ParseMode
 from constants import GET_FB_THOITIETHN_BUTTON, WEATHER_MENU
 from facebook_crawler import FacebookCrawler
+
+# Enable logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
 # Get the Redis URL from the environment variable
 r = redis.from_url(os.environ.get("REDIS_URL"))
@@ -14,35 +20,43 @@ r = redis.from_url(os.environ.get("REDIS_URL"))
 # Export the API token as an environment variable
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 
-# Enable logging
-logger = logging.getLogger(__name__)
-
 # Build keyboards
 WEATHER_MENU_MARKUP = InlineKeyboardMarkup([[
     InlineKeyboardButton(GET_FB_THOITIETHN_BUTTON, callback_data=GET_FB_THOITIETHN_BUTTON)
 ]])
 
 
-def echo(update: Update, context: CallbackContext) -> None:
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    This function would be added to the dispatcher as a handler for the /start command
+    """
+    # Send a welcome message
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text="Me is Bumo chatbot. Glad to meet you!"
+    )
+
+
+async def echo(update: Update, context: CallbackContext) -> None:
     """
     This function would be added to the dispatcher as a handler for messages coming from the Bot API
     """
-
     # Print to console
     print(f'{update.message.from_user.first_name} wrote {update.message.text}')
 
     # Reply to the user
-    update.message.copy(update.message.chat_id)
+    await update.message.copy(update.message.chat_id)
 
 
-def weather_menu(update: Update, context: CallbackContext) -> None:
+async def weather(update: Update, context: CallbackContext) -> None:
     """
     This handler sends a menu with the inline buttons we pre-assigned above
     """
-
+    # Put the user's name in the menu's greeting
     menu_string = WEATHER_MENU.format(update.message.from_user.first_name)
 
-    context.bot.send_message(
+    # Send the menu to the user
+    await context.bot.send_message(
         update.message.from_user.id,
         menu_string,
         parse_mode=ParseMode.HTML,
@@ -50,11 +64,10 @@ def weather_menu(update: Update, context: CallbackContext) -> None:
     )
 
 
-def button_tap(update: Update, context: CallbackContext) -> None:
+async def button_tap(update: Update, context: CallbackContext) -> None:
     """
     This handler processes the inline buttons on the menu
     """
-
     data = update.callback_query.data
     text = ''
     markup = None
@@ -79,10 +92,10 @@ def button_tap(update: Update, context: CallbackContext) -> None:
             ]])
 
     # Close the query to end the client-side loading animation
-    update.callback_query.answer()
+    await update.callback_query.answer()
 
     # Update message content with corresponding menu section
-    update.callback_query.message.edit_text(
+    await update.callback_query.edit_message_text(
         text,
         ParseMode.HTML,
         reply_markup=markup
@@ -90,26 +103,19 @@ def button_tap(update: Update, context: CallbackContext) -> None:
 
 
 def main() -> None:
-    updater = Updater(BOT_TOKEN)
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Get the dispatcher to register handlers
-    # Then, we register each handler and the conditions the update must meet to trigger it
-    dispatcher = updater.dispatcher
+    # Command handlers
+    application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler("weather", weather))
 
-    # Register commands
-    dispatcher.add_handler(CommandHandler("weather", weather_menu))
+    # Callback query handlers
+    application.add_handler(CallbackQueryHandler(button_tap))
 
-    # Register handler for inline buttons
-    dispatcher.add_handler(CallbackQueryHandler(button_tap))
+    # Message handlers
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), echo))
 
-    # Echo any message that is not a command
-    dispatcher.add_handler(MessageHandler(~Filters.command, echo))
-
-    # Start the Bot
-    updater.start_polling()
-
-    # Run the bot until you press Ctrl-C
-    updater.idle()
+    application.run_polling()
 
 
 if __name__ == '__main__':
