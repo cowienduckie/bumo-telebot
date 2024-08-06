@@ -1,1 +1,1 @@
-web: python src/bumo_telebot
+worker: python src/bumo_telebot
