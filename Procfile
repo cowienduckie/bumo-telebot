@@ -1,0 +1,1 @@
+web: python src/bumo_telebot
