@@ -1,6 +1,7 @@
 import datetime
 import logging
 import os
+import random
 from typing import Tuple
 
 import pytz
@@ -70,6 +71,21 @@ async def start_private_chat(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     await update.effective_message.reply_text(
         f"Welcome {user_name}. Me is Bumo chatbot. Glad to meet you!"
+    )
+
+
+async def random_choice(update: Update, context: CallbackContext) -> None:
+    """
+    This handler sends responses a random choice from the list of arguments
+    """
+    if not context.args:
+        text = "🙏 You need to provide a list of choices to pick from."
+    else:
+        text = f"🎲 The random choice is: {random.choice(context.args)}"
+
+    await context.bot.send_message(
+        update.message.from_user.id,
+        text
     )
 
 
@@ -164,6 +180,7 @@ def main() -> None:
 
     # Command handlers
     application.add_handler(CommandHandler("weather", weather))
+    application.add_handler(CommandHandler("random_choice", random_choice))
 
     # Callback query handlers
     application.add_handler(CallbackQueryHandler(send_weather))
