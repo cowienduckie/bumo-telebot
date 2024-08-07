@@ -22,9 +22,17 @@ from telegram.ext import (
     ApplicationBuilder
 )
 
-from constants import GET_FB_THOITIETHN_BUTTON, WEATHER_MENU, FB_WEATHER_CACHE_KEY, REDIS_URL_KEY, BOT_TOKEN_KEY, \
-    WEATHER_SUCCESS_MESSAGE, WEATHER_FAILURE_MESSAGE
+from constants import (
+    GET_FB_THOITIETHN_BUTTON,
+    WEATHER_MENU,
+    FB_WEATHER_CACHE_KEY,
+    REDIS_URL_KEY,
+    BOT_TOKEN_KEY,
+    WEATHER_SUCCESS_MESSAGE,
+    WEATHER_FAILURE_MESSAGE
+)
 from facebook_crawler import FacebookCrawler
+from redis_persistence import RedisPersistence
 
 # Enable logging
 logging.basicConfig(
@@ -142,7 +150,7 @@ async def send_daily_weather(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 def main() -> None:
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    application = ApplicationBuilder().token(BOT_TOKEN).persistence(RedisPersistence(r)).build()
 
     # Job queue
     job_queue = application.job_queue
