@@ -1,3 +1,4 @@
+import logging
 import re
 import time
 
@@ -9,10 +10,10 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 
 class FacebookCrawler:
-    DELAY_TIME_LOAD = 10
-    PAGE_TIMEOUT = 60
+    DELAY_TIME_LOAD = 12
+    PAGE_TIMEOUT = 75
 
-    def __init__(self):
+    def __init__(self, logger: logging):
         self.chrome_options = Options()
         self.chrome_options.add_argument("--headless")
         self.chrome_options.add_argument("--disable-gpu")
@@ -23,6 +24,8 @@ class FacebookCrawler:
             "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36"
         )
 
+        self.logging = logger
+
     def get_latest_post(self, page_id):
         driver = webdriver.Chrome(options=self.chrome_options)
 
@@ -31,7 +34,7 @@ class FacebookCrawler:
         try:
             return self._get_latest_post(driver, page_url)
         except Exception as ex:
-            print(f"Exception: {ex}")
+            logging.error(f"Exception: {ex}")
             return None
         finally:
             driver.quit()
@@ -46,21 +49,22 @@ class FacebookCrawler:
             driver.get(page_url)
 
             wait = WebDriverWait(driver, self.PAGE_TIMEOUT)
-            wait.until(ec.presence_of_element_located((By.CSS_SELECTOR, "div[role='main']")))
+            wait.until(ec.presence_of_element_located(
+                (By.CSS_SELECTOR, "div[role='main']")))
 
-            print(f"Finding first post on page_url={page_url}")
+            logging.info(f"Finding first post on page_url={page_url}")
             link_element = self.find_post_link(driver)
 
             if link_element is None:
-                print("Post link not found.")
+                logging.error("Post link not found.")
                 return None
 
             url = link_element.get_attribute("href")
 
-            print(f"Found URL: {url}")
+            logging.info(f"Found URL: {url}")
             return self.clean_url(url)
         except Exception as ex:
-            print(f"Exception: {ex}")
+            logging.error(f"Exception: {ex}")
             return None
 
     @staticmethod

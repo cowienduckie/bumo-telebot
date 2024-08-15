@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import logging
 import os
@@ -51,7 +52,8 @@ BOT_TOKEN = os.environ.get(BOT_TOKEN_KEY)
 
 # Build keyboards
 WEATHER_MENU_MARKUP = InlineKeyboardMarkup([[
-    InlineKeyboardButton(GET_FB_THOITIETHN_BUTTON, callback_data=GET_FB_THOITIETHN_BUTTON)
+    InlineKeyboardButton(GET_FB_THOITIETHN_BUTTON,
+                         callback_data=GET_FB_THOITIETHN_BUTTON)
 ]])
 
 
@@ -110,11 +112,16 @@ async def get_weather_data(is_daily_send=False) -> Tuple[str, InlineKeyboardMark
         r.delete(FB_WEATHER_CACHE_KEY)
 
     if (post_url := r.get(FB_WEATHER_CACHE_KEY)) is None:
-        crawler = FacebookCrawler()
+        crawler = FacebookCrawler(logging)
         post_url = crawler.get_latest_post("thoitietHN")
 
-        r.set(FB_WEATHER_CACHE_KEY, post_url)
-        r.expire(FB_WEATHER_CACHE_KEY, 3600)  # Set expiration time to 1 hour
+        if post_url is not None:
+            r.set(FB_WEATHER_CACHE_KEY, post_url)
+            # Set expiration time to 1 hour
+            r.expire(FB_WEATHER_CACHE_KEY, 3600)
+        else:
+            logging.error(
+                "Failed to get the latest post from the Facebook page.")
     else:
         post_url = post_url.decode('utf-8')
 
@@ -123,7 +130,8 @@ async def get_weather_data(is_daily_send=False) -> Tuple[str, InlineKeyboardMark
         markup = None
     else:
         text = WEATHER_SUCCESS_MESSAGE.format(post_url)
-        markup = InlineKeyboardMarkup([[InlineKeyboardButton("Go to Post", url=post_url)]])
+        markup = InlineKeyboardMarkup(
+            [[InlineKeyboardButton("Go to Post", url=post_url)]])
 
     return text, markup
 
@@ -155,6 +163,15 @@ async def send_daily_weather(context: ContextTypes.DEFAULT_TYPE) -> None:
     # Get the latest post from the Facebook page
     text, markup = await get_weather_data()
 
+    # If text is WEATHER_FAILURE_MESSAGE, retry to get the latest post up to 10 times
+    if text == WEATHER_FAILURE_MESSAGE:
+        for _ in range(10):
+            await asyncio.sleep(120)  # Wait for 2 minutes before retrying
+            text, markup = await get_weather_data()
+
+            if text != WEATHER_FAILURE_MESSAGE:
+                break
+
     # Send the weather forecast to all users who have started a chat with the bot
     for user_id in context.bot_data.setdefault("user_ids", set()):
         await context.bot.send_message(
@@ -166,14 +183,16 @@ async def send_daily_weather(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 def main() -> None:
-    application = ApplicationBuilder().token(BOT_TOKEN).persistence(RedisPersistence(r)).build()
+    application = ApplicationBuilder().token(
+        BOT_TOKEN).persistence(RedisPersistence(r)).build()
 
     # Job queue
     job_queue = application.job_queue
 
     job_queue.run_daily(
         callback=send_daily_weather,
-        time=datetime.time(hour=7, minute=30, tzinfo=pytz.timezone("Asia/Ho_Chi_Minh")),
+        time=datetime.time(hour=7, minute=30,
+                           tzinfo=pytz.timezone("Asia/Ho_Chi_Minh")),
         days=(0, 1, 2, 3, 4, 5, 6),
         name="daily_weather"
     )
