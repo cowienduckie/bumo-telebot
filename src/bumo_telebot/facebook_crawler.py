@@ -41,16 +41,20 @@ class FacebookCrawler:
 
     def _get_latest_post(self, driver, page_url):
         try:
-            driver.execute_cdp_cmd("Network.setUserAgentOverride", {
-                "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36"
-            })
+            driver.execute_cdp_cmd(
+                "Network.setUserAgentOverride",
+                {
+                    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.75 Safari/537.36"
+                },
+            )
 
             time.sleep(self.DELAY_TIME_LOAD)
             driver.get(page_url)
 
             wait = WebDriverWait(driver, self.PAGE_TIMEOUT)
-            wait.until(ec.presence_of_element_located(
-                (By.CSS_SELECTOR, "div[role='main']")))
+            wait.until(
+                ec.presence_of_element_located((By.CSS_SELECTOR, "div[role='main']"))
+            )
 
             logging.info(f"Finding first post on page_url={page_url}")
             link_element = self.find_post_link(driver)
@@ -83,13 +87,16 @@ class FacebookCrawler:
         if not url:
             return url
 
-        query_index = url.find('?')
-        fragment_index = url.find('#')
+        query_index = url.find("?")
+        fragment_index = url.find("#")
 
         if query_index == -1 and fragment_index == -1:
             return url
 
-        cutoff_index = min(query_index, fragment_index) if query_index != -1 and fragment_index != -1 else max(
-            query_index, fragment_index)
+        cutoff_index = (
+            min(query_index, fragment_index)
+            if query_index != -1 and fragment_index != -1
+            else max(query_index, fragment_index)
+        )
 
         return url[:cutoff_index]

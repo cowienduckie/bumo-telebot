@@ -7,12 +7,7 @@ from typing import Tuple
 
 import pytz
 import redis
-from telegram import (
-    Chat,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    Update
-)
+from telegram import Chat, InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.constants import ParseMode
 from telegram.ext import (
     filters,
@@ -21,7 +16,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     MessageHandler,
     ContextTypes,
-    ApplicationBuilder
+    ApplicationBuilder,
 )
 
 from constants import (
@@ -31,15 +26,14 @@ from constants import (
     REDIS_URL_KEY,
     BOT_TOKEN_KEY,
     WEATHER_SUCCESS_MESSAGE,
-    WEATHER_FAILURE_MESSAGE
+    WEATHER_FAILURE_MESSAGE,
 )
 from facebook_crawler import FacebookCrawler
 from redis_persistence import RedisPersistence
 
 # Enable logging
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -51,13 +45,20 @@ r = redis.from_url(REDIS_URL)
 BOT_TOKEN = os.environ.get(BOT_TOKEN_KEY)
 
 # Build keyboards
-WEATHER_MENU_MARKUP = InlineKeyboardMarkup([[
-    InlineKeyboardButton(GET_FB_THOITIETHN_BUTTON,
-                         callback_data=GET_FB_THOITIETHN_BUTTON)
-]])
+WEATHER_MENU_MARKUP = InlineKeyboardMarkup(
+    [
+        [
+            InlineKeyboardButton(
+                GET_FB_THOITIETHN_BUTTON, callback_data=GET_FB_THOITIETHN_BUTTON
+            )
+        ]
+    ]
+)
 
 
-async def start_private_chat(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def start_private_chat(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+) -> None:
     """
     Greets the user and records that they started a chat with the bot if it's a private chat.
     Since no `my_chat_member` update is issued when a user starts a private chat with the bot
@@ -85,10 +86,7 @@ async def random_choice(update: Update, context: CallbackContext) -> None:
     else:
         text = f"🎲 The random choice is: {random.choice(context.args)}"
 
-    await context.bot.send_message(
-        update.message.from_user.id,
-        text
-    )
+    await context.bot.send_message(update.message.from_user.id, text)
 
 
 async def weather(update: Update, context: CallbackContext) -> None:
@@ -103,7 +101,7 @@ async def weather(update: Update, context: CallbackContext) -> None:
         update.message.from_user.id,
         menu_string,
         parse_mode=ParseMode.HTML,
-        reply_markup=WEATHER_MENU_MARKUP
+        reply_markup=WEATHER_MENU_MARKUP,
     )
 
 
@@ -120,10 +118,9 @@ async def get_weather_data(is_daily_send=False) -> Tuple[str, InlineKeyboardMark
             # Set expiration time to 1 hour
             r.expire(FB_WEATHER_CACHE_KEY, 3600)
         else:
-            logging.error(
-                "Failed to get the latest post from the Facebook page.")
+            logging.error("Failed to get the latest post from the Facebook page.")
     else:
-        post_url = post_url.decode('utf-8')
+        post_url = post_url.decode("utf-8")
 
     if post_url is None:
         text = WEATHER_FAILURE_MESSAGE
@@ -131,7 +128,8 @@ async def get_weather_data(is_daily_send=False) -> Tuple[str, InlineKeyboardMark
     else:
         text = WEATHER_SUCCESS_MESSAGE.format(post_url)
         markup = InlineKeyboardMarkup(
-            [[InlineKeyboardButton("Go to Post", url=post_url)]])
+            [[InlineKeyboardButton("Go to Post", url=post_url)]]
+        )
 
     return text, markup
 
@@ -150,9 +148,7 @@ async def send_weather(update: Update, context: CallbackContext) -> None:
 
     # Update message content with corresponding menu section
     await update.callback_query.edit_message_text(
-        text,
-        ParseMode.HTML,
-        reply_markup=markup
+        text, ParseMode.HTML, reply_markup=markup
     )
 
 
@@ -175,26 +171,23 @@ async def send_daily_weather(context: ContextTypes.DEFAULT_TYPE) -> None:
     # Send the weather forecast to all users who have started a chat with the bot
     for user_id in context.bot_data.setdefault("user_ids", set()):
         await context.bot.send_message(
-            chat_id=user_id,
-            text=text,
-            parse_mode=ParseMode.HTML,
-            reply_markup=markup
+            chat_id=user_id, text=text, parse_mode=ParseMode.HTML, reply_markup=markup
         )
 
 
 def main() -> None:
-    application = ApplicationBuilder().token(
-        BOT_TOKEN).persistence(RedisPersistence(r)).build()
+    application = (
+        ApplicationBuilder().token(BOT_TOKEN).persistence(RedisPersistence(r)).build()
+    )
 
     # Job queue
     job_queue = application.job_queue
 
     job_queue.run_daily(
         callback=send_daily_weather,
-        time=datetime.time(hour=7, minute=30,
-                           tzinfo=pytz.timezone("Asia/Ho_Chi_Minh")),
+        time=datetime.time(hour=7, minute=30, tzinfo=pytz.timezone("Asia/Ho_Chi_Minh")),
         days=(0, 1, 2, 3, 4, 5, 6),
-        name="daily_weather"
+        name="daily_weather",
     )
 
     # Command handlers
@@ -210,5 +203,5 @@ def main() -> None:
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -14,10 +14,7 @@ class RedisPersistence(BasePersistence, ABC):
 
     def __init__(self, redis: Redis, on_flush: bool = False):
         persistence_input = PersistenceInput(
-            bot_data=True,
-            chat_data=False,
-            user_data=False,
-            callback_data=False
+            bot_data=True, chat_data=False, user_data=False, callback_data=False
         )
         super().__init__(store_data=persistence_input, update_interval=3600)
 
@@ -30,30 +27,30 @@ class RedisPersistence(BasePersistence, ABC):
 
     async def load_redis(self) -> None:
         try:
-            if (data_bytes := self.redis.get('TelegramBotPersistence')) is None:
+            if (data_bytes := self.redis.get("TelegramBotPersistence")) is None:
                 self.conversations = dict()
                 self.user_data = defaultdict(dict)
                 self.chat_data = defaultdict(dict)
                 self.bot_data = {}
             else:
                 data = pickle.loads(data_bytes)
-                self.user_data = defaultdict(dict, data['user_data'])
-                self.chat_data = defaultdict(dict, data['chat_data'])
+                self.user_data = defaultdict(dict, data["user_data"])
+                self.chat_data = defaultdict(dict, data["chat_data"])
                 # For backwards compatibility with files not containing bot data
-                self.bot_data = data.get('bot_data', {})
-                self.conversations = data['conversations']
+                self.bot_data = data.get("bot_data", {})
+                self.conversations = data["conversations"]
         except Exception as exc:
             raise TypeError(f"Something went wrong unpickling from Redis") from exc
 
     def dump_redis(self) -> None:
         data = {
-            'conversations': self.conversations,
-            'user_data': self.user_data,
-            'chat_data': self.chat_data,
-            'bot_data': self.bot_data,
+            "conversations": self.conversations,
+            "user_data": self.user_data,
+            "chat_data": self.chat_data,
+            "bot_data": self.bot_data,
         }
         data_bytes = pickle.dumps(data)
-        self.redis.set('TelegramBotPersistence', data_bytes)
+        self.redis.set("TelegramBotPersistence", data_bytes)
 
     def flush(self) -> None:
         """Will save all data in memory to pickle on Redis."""
@@ -91,7 +88,9 @@ class RedisPersistence(BasePersistence, ABC):
         """Returns the conversations from the pickle on Redis if it exists or an empty dict."""
         pass
 
-    def update_conversation(self, name: str, key: Tuple[int, ...], new_state: Optional[object]) -> None:
+    def update_conversation(
+        self, name: str, key: Tuple[int, ...], new_state: Optional[object]
+    ) -> None:
         """Will update the conversations for the given handler and depending on :attr:`on_flush` save the pickle on Redis."""
         pass
 
