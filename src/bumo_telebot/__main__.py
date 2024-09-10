@@ -17,6 +17,7 @@ from telegram.ext import (
     MessageHandler,
     ContextTypes,
     ApplicationBuilder,
+    JobQueue,
 )
 
 from constants import (
@@ -178,20 +179,30 @@ async def send_daily_weather(context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
+def queue_daily_weather(job_queue: JobQueue) -> None:
+    occurrences = [
+        (7, 30, pytz.timezone("Asia/Ho_Chi_Minh")),
+        (17, 00, pytz.timezone("Asia/Ho_Chi_Minh")),
+    ]
+
+    for hour, minute, timezone in occurrences:
+        job_queue.run_daily(
+            callback=send_daily_weather,
+            time=datetime.time(hour=hour, minute=minute, tzinfo=timezone),
+            days=(0, 1, 2, 3, 4, 5, 6),
+            name=f"daily_weather_{hour}:{minute}",
+        )
+
+
 def main() -> None:
+    # Build the application
     application = (
         ApplicationBuilder().token(BOT_TOKEN).persistence(RedisPersistence(r)).build()
     )
 
     # Job queue
     job_queue = application.job_queue
-
-    job_queue.run_daily(
-        callback=send_daily_weather,
-        time=datetime.time(hour=7, minute=30, tzinfo=pytz.timezone("Asia/Ho_Chi_Minh")),
-        days=(0, 1, 2, 3, 4, 5, 6),
-        name="daily_weather",
-    )
+    queue_daily_weather(job_queue)
 
     # Command handlers
     application.add_handler(CommandHandler("weather", weather))
