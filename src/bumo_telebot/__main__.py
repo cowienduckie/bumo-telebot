@@ -106,13 +106,17 @@ async def weather(update: Update, context: CallbackContext) -> None:
 
 
 async def get_weather_data(is_daily_send=False) -> Tuple[str, InlineKeyboardMarkup]:
+    # Check if the data is being sent for daily weather forecast, if so, delete the cache
     if is_daily_send:
         r.delete(FB_WEATHER_CACHE_KEY)
 
+    # Get the latest post from the Facebook page
     if (post_url := r.get(FB_WEATHER_CACHE_KEY)) is None:
+        # Get the data using the FacebookCrawler
         crawler = FacebookCrawler(logging)
         post_url = crawler.get_latest_post("thoitietHN")
 
+        # Cache the URL
         if post_url is not None:
             r.set(FB_WEATHER_CACHE_KEY, post_url)
             # Set expiration time to 1 hour
@@ -120,8 +124,10 @@ async def get_weather_data(is_daily_send=False) -> Tuple[str, InlineKeyboardMark
         else:
             logging.error("Failed to get the latest post from the Facebook page.")
     else:
+        # Get the URL from the cache
         post_url = post_url.decode("utf-8")
 
+    # Prepare the text and markup
     if post_url is None:
         text = WEATHER_FAILURE_MESSAGE
         markup = None
@@ -142,9 +148,6 @@ async def send_weather(update: Update, context: CallbackContext) -> None:
         return
 
     text, markup = await get_weather_data()
-
-    # Close the query to end the client-side loading animation
-    await update.callback_query.answer()
 
     # Update message content with corresponding menu section
     await update.callback_query.edit_message_text(
