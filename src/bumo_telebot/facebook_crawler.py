@@ -11,7 +11,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 class FacebookCrawler:
     DELAY_TIME_LOAD = 12
-    PAGE_TIMEOUT = 100
+    PAGE_TIMEOUT = 75
 
     def __init__(self, logger: logging):
         self.chrome_options = Options()
@@ -51,15 +51,9 @@ class FacebookCrawler:
             time.sleep(self.DELAY_TIME_LOAD)
             driver.get(page_url)
 
-            # Wait for the page to load completely all links
             wait = WebDriverWait(driver, self.PAGE_TIMEOUT)
             wait.until(
-                ec.presence_of_element_located(
-                    (
-                        By.CSS_SELECTOR,
-                        "a[href^='https://www.facebook.com/'][href*='/posts/']",
-                    )
-                ),
+                ec.presence_of_element_located((By.CSS_SELECTOR, "div[role='main']"))
             )
 
             logging.info(f"Finding first post on page_url={page_url}")
